@@ -20,6 +20,9 @@ void cleanup();
 #define DEVICE_NAME_LEN 128
 static char dev_name[DEVICE_NAME_LEN];
 
+#define NUM_ITEMS 12
+#define debugSize 5
+
 int main()
 {
     cl_uint platformCount;
@@ -36,6 +39,16 @@ int main()
     char fileName[] = "./mykernel.cl";
     char *source_str;
     size_t source_size;
+
+		float final_sum = 0.0;
+		float pi = 0.0;
+		const int num_wg = 3;
+//		const int num_wi = 2;
+		int denominators[NUM_ITEMS] = {1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23};
+		float *result = malloc(sizeof(float)*num_wg);
+		int i = 0;
+		int num_vars_in_wi = 2;
+		float *debug = malloc(sizeof(float)*debugSize);
 
 #ifdef __APPLE__
     /* Get Platform and Device Info */
@@ -112,30 +125,55 @@ int main()
     ret = clBuildProgram(program, 1, &device_id, NULL, NULL, NULL);
     if (ret != CL_SUCCESS) {
       printf("Failed to build program.\n");
+			printf("ret = %d", ret);
       exit(1);
     }
 
     /* Create OpenCL Kernel */
-    kernel = clCreateKernel(program, "simpleMultiply", &ret);
+    kernel = clCreateKernel(program, "calculatePi", &ret);
     if (ret != CL_SUCCESS) {
       printf("Failed to create kernel.\n");
       exit(1);
     }
 
-//   cl_mem bufferA = clCreateBuffer(context, CL_MEM_READ_ONLY,
-//           wA*hA*sizeof(float), NULL, &ret);
-    /* copy Matrix A to the device */
-//    clEnqueueWriteBuffer(command_queue, bufferA, CL_TRUE, 0,
-//           wA*hA*sizeof(float), (void *)A, 0, NULL, NULL);
+		cl_mem bufferDen = clCreateBuffer(context, CL_MEM_READ_ONLY,
+				sizeof(int)*NUM_ITEMS, NULL, &ret);
+	  clEnqueueWriteBuffer(command_queue, bufferDen, CL_TRUE, 0,
+				sizeof(int)*NUM_ITEMS, (void *) denominators, 0, NULL, NULL);
 
-    /* Set the kernel arguments */
-//    clSetKernelArg(kernel, 0, sizeof(cl_mem), (void *)&bufferD);
+		
+		cl_mem debugBuf = clCreateBuffer(context, CL_MEM_READ_WRITE,
+				sizeof(float)*debugSize, NULL, &ret);
+		cl_mem resultBuf = clCreateBuffer(context, CL_MEM_READ_WRITE, 
+				sizeof(float)*num_wg, NULL, &ret);
 
     /* Execute the kernel */
-//    size_t globalws[2]={wD, hD};
-//    size_t localws[2] = {2, 2};
-    ret = clEnqueueNDRangeKernel(command_queue, kernel, 2, NULL,
-      globalws, localws, 0, NULL, NULL);
+		size_t globalws = 2;
+		size_t localws = 2;
+
+    /* Set the kernel arguments */
+    ret = clSetKernelArg(kernel, 0, sizeof(cl_mem), (void *)&bufferDen);
+/*		if(ret != CL_SUCCESS) 
+		{
+			printf("invalid argument: %d", 0);
+			printf("return value: %d", ret);
+		}*/
+		ret = clSetKernelArg(kernel, 1, sizeof(float)*localws, NULL);
+/*		if(ret != CL_SUCCESS)
+		{
+			printf("invalid argument: %d", 0);
+			printf("return value: %d", ret);
+		} */
+		ret = clSetKernelArg(kernel, 2, sizeof(cl_mem), (void *)&resultBuf);
+/*		if(ret != CL_SUCCESS)
+		{
+			printf("invalid argument: %d", 0);
+			printf("return value: %d", ret);
+		}*/
+		ret = clSetKernelArg(kernel, 3, sizeof(cl_mem), (void *)&debugBuf);
+
+    ret = clEnqueueNDRangeKernel(command_queue, kernel, 1, NULL,
+      &globalws, &localws, 0, NULL, NULL);
     /* it is important to check the return value.
       for example, when enqueueNDRangeKernel may fail when Work group size
       does not divide evenly into global work size */
@@ -145,13 +183,32 @@ int main()
       exit(1);
     }
 
+		clEnqueueReadBuffer(command_queue, resultBuf, CL_TRUE, 0, 
+				sizeof(float)*num_wg, (void *)result, 0, NULL, NULL);
+		clEnqueueReadBuffer(command_queue, debugBuf, CL_TRUE, 0,
+				sizeof(float)*debugSize, (void *)debug, 0, NULL, NULL);
+		
+		for(i = 0; i < num_wg; i++)
+		{
+			printf("result[%d] = %f\n", i, result[i]);
+			final_sum += result[i];
+		}
+		pi = final_sum*4.0;
+
+		printf("pi = %f\n", pi);
+
     /* Copy the output data back to the host */
 //    clEnqueueReadBuffer(command_queue, bufferD, CL_TRUE, 0, wD*hD*sizeof(float),
 //         (void *)D, 0, NULL, NULL);
 
     /* free resources */
 //    free(D);
+		free(result);
+		free(debug);
 
+		clReleaseMemObject(resultBuf);
+		clReleaseMemObject(bufferDen);
+		clReleaseMemObject(debugBuf);
 //    clReleaseMemObject(bufferA);
     clReleaseCommandQueue(command_queue);
     clReleaseKernel(kernel);
