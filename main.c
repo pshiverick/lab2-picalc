@@ -53,7 +53,7 @@ int main()
 			value += 2;
 		}
 	 
-		float *result = malloc(sizeof(float)*num_wg);
+		float *result = (float *)malloc(sizeof(float)*num_wg);
 
 #ifdef __APPLE__
     /* Get Platform and Device Info */
